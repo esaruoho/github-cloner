@@ -1,0 +1,311 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/skills/github-cloner/repo-analysis-schema.json",
+  "title": "Repository Analysis",
+  "description": "Structured analysis data from github-cloner skill",
+  "type": "object",
+  "required": ["version", "generated", "source_repo", "repository"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Schema version",
+      "const": "1.0"
+    },
+    "generated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp when analysis was performed"
+    },
+    "source_repo": {
+      "type": "string",
+      "format": "uri",
+      "description": "Full URL to the analyzed repository"
+    },
+    "repository": {
+      "type": "object",
+      "description": "Repository metadata",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Repository name"
+        },
+        "description": {
+          "type": "string",
+          "description": "Repository description"
+        },
+        "languages": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Programming languages used"
+        },
+        "topics": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Repository topics/tags"
+        },
+        "default_branch": {
+          "type": "string",
+          "description": "Default branch name"
+        },
+        "license": {
+          "type": "string",
+          "description": "License type"
+        },
+        "homepage": {
+          "type": "string",
+          "format": "uri",
+          "description": "Project homepage URL"
+        }
+      }
+    },
+    "contributors": {
+      "type": "array",
+      "description": "Top contributors to the repository",
+      "items": {
+        "type": "object",
+        "required": ["login", "contributions"],
+        "properties": {
+          "login": {
+            "type": "string",
+            "description": "GitHub username"
+          },
+          "contributions": {
+            "type": "integer",
+            "description": "Number of contributions"
+          },
+          "focus_areas": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Directory paths or areas this contributor focuses on"
+          },
+          "commit_style": {
+            "type": "string",
+            "enum": ["conventional", "freeform", "mixed"],
+            "description": "Typical commit message style"
+          },
+          "recent_activity": {
+            "type": "boolean",
+            "description": "Whether contributor has recent commits"
+          }
+        }
+      }
+    },
+    "conventions": {
+      "type": "object",
+      "description": "Extracted development conventions",
+      "properties": {
+        "commit_format": {
+          "type": "string",
+          "enum": ["conventional", "freeform", "angular", "custom"],
+          "description": "Commit message format style"
+        },
+        "commit_prefixes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Common commit prefixes (feat, fix, etc.)"
+        },
+        "commit_examples": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Example commit messages from the repo"
+        },
+        "pr_title_format": {
+          "type": "string",
+          "description": "Typical PR title format"
+        },
+        "pr_has_template": {
+          "type": "boolean",
+          "description": "Whether repo has PR template"
+        },
+        "pr_template_sections": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Sections in PR template"
+        },
+        "issue_labels": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Common issue labels"
+        },
+        "issue_has_templates": {
+          "type": "boolean",
+          "description": "Whether repo has issue templates"
+        },
+        "branch_naming": {
+          "type": "string",
+          "description": "Branch naming convention if detected"
+        }
+      }
+    },
+    "recent_prs": {
+      "type": "array",
+      "description": "Recent pull requests",
+      "items": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "integer",
+            "description": "PR number"
+          },
+          "title": {
+            "type": "string",
+            "description": "PR title"
+          },
+          "body": {
+            "type": "string",
+            "description": "PR description/body"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["open", "closed", "merged"],
+            "description": "PR state"
+          },
+          "author": {
+            "type": "string",
+            "description": "PR author username"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "merged_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "files_changed": {
+            "type": "integer",
+            "description": "Number of files changed"
+          },
+          "additions": {
+            "type": "integer"
+          },
+          "deletions": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "recent_issues": {
+      "type": "array",
+      "description": "Recent issues",
+      "items": {
+        "type": "object",
+        "properties": {
+          "number": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["open", "closed"]
+          },
+          "labels": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "author": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "closed_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    "recent_commits": {
+      "type": "array",
+      "description": "Recent commits",
+      "items": {
+        "type": "object",
+        "properties": {
+          "sha": {
+            "type": "string",
+            "description": "Short SHA (7 chars)"
+          },
+          "message": {
+            "type": "string",
+            "description": "Commit message"
+          },
+          "author": {
+            "type": "string",
+            "description": "Commit author name"
+          },
+          "date": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    "documentation": {
+      "type": "object",
+      "description": "Available documentation",
+      "properties": {
+        "has_readme": {
+          "type": "boolean"
+        },
+        "has_contributing": {
+          "type": "boolean"
+        },
+        "has_claude_md": {
+          "type": "boolean",
+          "description": "Whether CLAUDE.md or .claude/ exists"
+        },
+        "has_wiki": {
+          "type": "boolean"
+        },
+        "wiki_pages": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of wiki page names"
+        },
+        "readme_summary": {
+          "type": "string",
+          "description": "Brief summary of README content"
+        },
+        "contributing_summary": {
+          "type": "string",
+          "description": "Brief summary of CONTRIBUTING content"
+        },
+        "claude_md_content": {
+          "type": "string",
+          "description": "Full content of CLAUDE.md if present"
+        }
+      }
+    },
+    "recent_activity": {
+      "type": "object",
+      "description": "Activity summary for analysis period",
+      "properties": {
+        "analysis_period_days": {
+          "type": "integer",
+          "description": "Number of days analyzed"
+        },
+        "total_commits": {
+          "type": "integer"
+        },
+        "total_prs_merged": {
+          "type": "integer"
+        },
+        "total_issues_closed": {
+          "type": "integer"
+        },
+        "active_contributors": {
+          "type": "integer",
+          "description": "Number of unique contributors in period"
+        }
+      }
+    }
+  }
+}
