@@ -18,7 +18,7 @@ usage() {
     echo "  --clone          Clone the repository for deeper analysis"
     echo "  --wiki           Include wiki if available"
     echo "  --months N       Commit history timeframe (default: 3)"
-    echo "  --output DIR     Output directory (default: /tmp/repo-analysis)"
+    echo "  --output DIR     Output directory (default: ./<repo-name>)"
     echo ""
     echo "Examples:"
     echo "  $0 anthropics/claude-code"
@@ -46,7 +46,7 @@ REPO=""
 DO_CLONE=false
 DO_WIKI=false
 MONTHS=3
-OUTPUT_DIR="/tmp/repo-analysis"
+OUTPUT_DIR=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -85,6 +85,11 @@ fi
 # Extract owner and repo name
 OWNER=$(echo "$REPO" | cut -d'/' -f1)
 REPO_NAME=$(echo "$REPO" | cut -d'/' -f2)
+
+# Default output to CWD/<repo-name> (not /tmp)
+if [[ -z "$OUTPUT_DIR" ]]; then
+    OUTPUT_DIR="$(pwd)/${REPO_NAME}"
+fi
 
 echo -e "${GREEN}Analyzing repository: ${REPO}${NC}"
 echo "Output directory: ${OUTPUT_DIR}"

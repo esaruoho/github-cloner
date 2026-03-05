@@ -111,8 +111,7 @@ Question 4: "How many PRs to fetch?" (Show actual counts!)
 Run these commands to gather repository data:
 
 ```bash
-# Create temp directory
-mkdir -p /tmp/repo-analysis
+# Analysis data goes into the cloned repo directory (CWD/<repo-name>)
 
 # 1. Get repo metadata
 gh repo view owner/repo --json name,description,homepageUrl,languages,topics,defaultBranchRef
@@ -155,10 +154,10 @@ gh api repos/owner/repo/contributors --jq '.[] | {login, contributions}' | head 
 
 # If "Full clone" selected:
 # 7. Clone repository (shallow)
-git clone --depth=1 https://github.com/owner/repo.git /tmp/repo-analysis/repo
+git clone --depth=1 https://github.com/owner/repo.git ./<repo-name>/repo
 
 # 8. Clone wiki (if exists)
-git clone --depth=1 https://github.com/owner/repo.wiki.git /tmp/repo-analysis/wiki 2>/dev/null || echo "No wiki"
+git clone --depth=1 https://github.com/owner/repo.wiki.git ./<repo-name>/wiki 2>/dev/null || echo "No wiki"
 ```
 
 ### Step 5: Analyze Data
@@ -406,14 +405,7 @@ Also create `~/.claude/skills/<repo-name>/analysis.json` for other LLMs/agents:
 
 This file follows the schema at `~/.claude/skills/github-cloner/schemas/repo-analysis-schema.json`.
 
-### Step 7: Cleanup
-
-```bash
-# Remove temp files
-rm -rf /tmp/repo-analysis
-```
-
-### Step 8: Report Success
+### Step 7: Report Success
 
 Tell the user:
 - Skill created at `~/.claude/skills/<repo-name>/SKILL.md`
