@@ -11,6 +11,7 @@ GitHub Cloner examines a repository and extracts:
 - **PR patterns** - How are PRs titled and described? What's typical scope?
 - **Issue organization** - What labels are used? Are there templates?
 - **Documentation** - README, CONTRIBUTING, CLAUDE.md, wiki content
+- **A Fork on the Road** - Analyzes forks for unique work not in upstream — finds hidden bug fixes, features, and customizations living in the fork ecosystem
 
 It then generates a **skill file** that helps any AI assistant work "in tune" with that repository's actual development patterns.
 
@@ -66,6 +67,7 @@ After running, a new skill is created at `~/.claude/skills/<repo-name>/` contain
 ## Features
 
 - **Interactive options** - Choose full clone vs API-only, commit history timeframe
+- **A Fork on the Road** - Discover hidden work in forks: bug fixes, features, and customizations that never made it upstream
 - **Machine-readable output** - `analysis.json` follows a JSON schema for LLM interoperability
 - **Cross-LLM compatible** - Other AI assistants can consume the structured data
 - **Incremental updates** - Re-run to refresh with latest commits/PRs

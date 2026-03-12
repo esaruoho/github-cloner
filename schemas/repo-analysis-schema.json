@@ -306,6 +306,90 @@
           "description": "Number of unique contributors in period"
         }
       }
+    },
+    "forks": {
+      "type": "object",
+      "description": "A Fork on the Road — analysis of repository forks for unique divergent work",
+      "properties": {
+        "total_count": {
+          "type": "integer",
+          "description": "Total number of forks"
+        },
+        "analyzed": {
+          "type": "boolean",
+          "description": "Whether fork analysis was performed"
+        },
+        "forks_with_unique_work": {
+          "type": "integer",
+          "description": "Number of forks that have commits not in upstream"
+        },
+        "fork_details": {
+          "type": "array",
+          "description": "Detailed analysis of each fork",
+          "items": {
+            "type": "object",
+            "required": ["full_name", "owner", "type", "ahead_by"],
+            "properties": {
+              "full_name": {
+                "type": "string",
+                "description": "Full fork name (owner/repo)"
+              },
+              "owner": {
+                "type": "string",
+                "description": "Fork owner username"
+              },
+              "type": {
+                "type": "string",
+                "enum": ["feature", "fix", "customization", "abandoned", "mirror"],
+                "description": "Classification of the fork's divergence"
+              },
+              "ahead_by": {
+                "type": "integer",
+                "description": "Number of commits ahead of upstream"
+              },
+              "behind_by": {
+                "type": "integer",
+                "description": "Number of commits behind upstream"
+              },
+              "last_pushed": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the fork was last pushed to"
+              },
+              "unique_commits": {
+                "type": "array",
+                "description": "Commits in the fork not in upstream",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "sha": { "type": "string" },
+                    "message": { "type": "string" },
+                    "author": { "type": "string" },
+                    "date": { "type": "string", "format": "date-time" }
+                  }
+                }
+              },
+              "files_changed": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Files modified in the fork's unique commits"
+              },
+              "summary": {
+                "type": "string",
+                "description": "Brief description of what this fork adds or changes"
+              },
+              "upstreaming_candidate": {
+                "type": "boolean",
+                "description": "Whether this fork's changes could benefit upstream"
+              },
+              "upstreaming_reason": {
+                "type": "string",
+                "description": "Why this fork's changes could benefit upstream"
+              }
+            }
+          }
+        }
+      }
     }
   }
 }
