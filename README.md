@@ -1,19 +1,29 @@
-# GitHub Cloner - Repository Skill Generator
+# GitHub/GitLab Cloner - Repository Skill Generator
 
-A Claude Code skill that analyzes any GitHub repository and generates a custom development skill tailored to that project's patterns, conventions, and documentation.
+A Claude Code skill that analyzes any GitHub or GitLab repository and generates a custom development skill tailored to that project's patterns, conventions, and documentation.
 
 ## What It Does
 
-GitHub Cloner examines a repository and extracts:
+GitHub/GitLab Cloner examines a repository and extracts:
 
 - **Contributor patterns** - Who are the key developers? What areas do they focus on?
 - **Commit conventions** - Do they use conventional commits? What prefixes are common?
-- **PR patterns** - How are PRs titled and described? What's typical scope?
+- **PR/MR patterns** - How are PRs/MRs titled and described? What's typical scope?
 - **Issue organization** - What labels are used? Are there templates?
 - **Documentation** - README, CONTRIBUTING, CLAUDE.md, wiki content
+- **CI/CD** - GitHub Actions workflows or `.gitlab-ci.yml` pipelines
 - **A Fork on the Road** - Analyzes forks for unique work not in upstream — finds hidden bug fixes, features, and customizations living in the fork ecosystem
 
 It then generates a **skill file** that helps any AI assistant work "in tune" with that repository's actual development patterns.
+
+## Supported Platforms
+
+| Platform | CLI Tool | Status |
+|----------|----------|--------|
+| GitHub | `gh` | Full support |
+| GitLab | `glab` | Full support (v2.0+) |
+
+Both platforms support: repo metadata, issues, PRs/MRs, commits, contributors, forks, wiki, and full clone analysis.
 
 ## Installation
 
@@ -37,22 +47,42 @@ Or manually copy the files to `~/.claude/skills/github-cloner/`.
 
 **Examples:**
 ```
+# GitHub repos
 /github-cloner https://github.com/anthropics/claude-code
 /github-cloner facebook/react
 /github-cloner owner/repo
+
+# GitLab repos
+/github-cloner https://gitlab.com/inkscape/inkscape
+/github-cloner https://gitlab.freedesktop.org/mesa/mesa
+/github-cloner gitlab:group/subgroup/project
 ```
+
+**Platform detection is automatic:**
+- URLs containing `gitlab.com` or `gitlab.` -> GitLab
+- URLs containing `github.com` -> GitHub
+- `gitlab:` prefix -> GitLab
+- Bare `owner/repo` -> GitHub (default)
 
 ## Requirements
 
 - [Claude Code](https://claude.ai/claude-code) CLI
+
+**For GitHub repos:**
 - [GitHub CLI](https://cli.github.com/) (`gh`) installed and authenticated
 
 ```bash
-# Install GitHub CLI
 brew install gh
-
-# Authenticate
 gh auth login
+```
+
+**For GitLab repos:**
+- [GitLab CLI](https://gitlab.com/gitlab-org/cli) (`glab`) installed and authenticated
+
+```bash
+brew install glab
+glab auth login
+# For self-hosted: glab auth login --hostname your-gitlab.example.com
 ```
 
 ## Output
@@ -62,15 +92,19 @@ After running, a new skill is created at `~/.claude/skills/<repo-name>/` contain
 | File | Purpose |
 |------|---------|
 | `SKILL.md` | Human-readable skill with conventions, patterns, instructions |
+| `pr-exemplars.md` | PR/MR archive with technique index |
 | `analysis.json` | Machine-readable structured data (for other LLMs) |
 
 ## Features
 
+- **Dual platform** - Works with both GitHub and GitLab repositories
 - **Interactive options** - Choose full clone vs API-only, commit history timeframe
 - **A Fork on the Road** - Discover hidden work in forks: bug fixes, features, and customizations that never made it upstream
 - **Machine-readable output** - `analysis.json` follows a JSON schema for LLM interoperability
 - **Cross-LLM compatible** - Other AI assistants can consume the structured data
-- **Incremental updates** - Re-run to refresh with latest commits/PRs
+- **Living skills** - PR/MR analysis keeps the skill growing after initial generation
+- **Self-hosted GitLab** - Supports custom GitLab instances via `glab auth`
+- **Incremental updates** - Re-run to refresh with latest commits/PRs/MRs
 
 ## Documentation
 
@@ -89,6 +123,7 @@ After running, a new skill is created at `~/.claude/skills/<repo-name>/` contain
    cd ~/repos/my-project
    claude
    # In Claude: /github-cloner owner/my-project
+   # Or: /github-cloner https://gitlab.com/group/my-project
    ```
 
 2. **Use the skill from anywhere:**
@@ -121,6 +156,7 @@ github-cloner/
 ## Use Cases
 
 - **Onboard to a new codebase** - Quickly understand conventions and key contributors
+- **Cross-platform projects** - Works with repos on either GitHub or GitLab
 - **Cross-LLM workflows** - Generate data for Claude, use it with GPT/Gemini
 - **Build custom skills** - Use as a foundation for repository-specific skills
 - **Team documentation** - Auto-generate development guides from actual patterns

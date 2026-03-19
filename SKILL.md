@@ -1,18 +1,22 @@
 ---
 name: github-cloner
-description: Analyze a GitHub repository and generate a custom development skill tailored to that project's patterns, conventions, and documentation
-version: 1.0.0
-tags: [github, repository, skill-generator, onboarding, development]
+description: Analyze a GitHub or GitLab repository and generate a custom development skill tailored to that project's patterns, conventions, and documentation
+version: 2.0.0
+tags: [github, gitlab, repository, skill-generator, onboarding, development]
 triggers:
   keywords:
-    primary: [github-cloner, repo-skill, repository-skill, clone-repo]
-    secondary: [analyze repo, learn repo, onboard repo, generate skill]
+    primary: [github-cloner, gitlab-cloner, repo-skill, repository-skill, clone-repo]
+    secondary: [analyze repo, learn repo, onboard repo, generate skill, glab, gitlab]
   priority: high
 ---
 
-# GitHub Cloner - Repository Skill Generator
+# GitHub/GitLab Cloner - Repository Skill Generator
 
-Generate a custom skill for any GitHub repository by analyzing its commits, PRs, issues, wiki, and documentation. The generated skill helps Claude work "in tune" with the project's actual development patterns.
+Generate a custom skill for any GitHub or GitLab repository by analyzing its commits, PRs/MRs, issues, wiki, and documentation. The generated skill helps Claude work "in tune" with the project's actual development patterns.
+
+**Supports both platforms:**
+- **GitHub** via `gh` CLI
+- **GitLab** via `glab` CLI
 
 ---
 
@@ -25,9 +29,41 @@ Generate a custom skill for any GitHub repository by analyzing its commits, PRs,
 
 **Examples:**
 ```
+# GitHub
 /github-cloner https://github.com/anthropics/claude-code
 /github-cloner facebook/react
+
+# GitLab
+/github-cloner https://gitlab.com/inkscape/inkscape
+/github-cloner https://gitlab.freedesktop.org/mesa/mesa
+/github-cloner gitlab:group/subgroup/project
 ```
+
+---
+
+## Platform Detection & Terminology
+
+Throughout this skill, commands are shown for both platforms. The detected platform determines:
+
+| Concept | GitHub | GitLab |
+|---------|--------|--------|
+| CLI tool | `gh` | `glab` |
+| Code review unit | Pull Request (PR) | Merge Request (MR) |
+| Repo targeting | `--repo owner/repo` | `-R owner/repo` (issue/mr) or positional (repo view) |
+| JSON output | `--json field1,field2` | `-F json` or `-O json` then pipe to `jq` |
+| All states | `--state all` | `--all` |
+| Result limit | `--limit N` | `--per-page N` / `-P N` |
+| API jq filter | `-q '.field'` | pipe to `jq '.field'` |
+| API query params | URL query string `?key=val` | `-F key=val` |
+| API pagination | `--paginate` | `--paginate` |
+| API path encoding | `repos/owner/repo` | `projects/owner%2Frepo` (slashes URL-encoded) |
+| Clone URL | `https://github.com/owner/repo.git` | `https://gitlab.com/group/project.git` |
+
+**GitLab URL-encoding gotcha:** In `glab api`, project paths with slashes must be URL-encoded. `/` becomes `%2F`:
+- `my-group/my-project` → `my-group%2Fmy-project`
+- `my-group/sub-group/my-project` → `my-group%2Fsub-group%2Fmy-project`
+
+If inside the cloned repo, `glab api` supports `:id` and `:fullpath` placeholders that auto-resolve.
 
 ---
 
@@ -35,52 +71,70 @@ Generate a custom skill for any GitHub repository by analyzing its commits, PRs,
 
 When this skill is invoked, follow these steps:
 
-### Step 1: Parse Repository URL
+### Step 1: Parse Repository URL and Detect Platform
 
-Extract `owner` and `repo` from the input. Accept formats:
+Extract `owner` and `repo` (or `group/project` for GitLab) from the input. Detect platform automatically.
+
+**Accept formats:**
+
+GitHub:
 - `https://github.com/owner/repo`
 - `https://github.com/owner/repo.git`
-- `owner/repo`
+- `owner/repo` (default if no prefix — assumes GitHub)
+
+GitLab:
+- `https://gitlab.com/group/project`
+- `https://gitlab.com/group/subgroup/project`
+- `https://gitlab.com/group/project.git`
+- `https://<self-hosted-gitlab>/group/project`
+- `gitlab:group/project` (explicit GitLab prefix)
+
+**Detection rules:**
+1. URL contains `gitlab.com` or `gitlab.` → GitLab
+2. URL contains `github.com` → GitHub
+3. Prefixed with `gitlab:` → GitLab
+4. Bare `owner/repo` with no prefix → GitHub (default)
+5. If ambiguous, ask the user
+
+**Set a `PLATFORM` variable** (github or gitlab) that all subsequent steps use.
+
+For GitLab, also compute the **URL-encoded project path**: replace `/` with `%2F` in the project path (e.g., `group%2Fsubgroup%2Fproject`). Store this as `PROJECT_PATH_ENCODED`.
 
 ### Step 2: Get Repository Stats First
 
 Before asking user options, fetch the total counts so the user knows what they're working with:
 
+**GitHub:**
 ```bash
-# Get issue counts
-gh api repos/owner/repo -q '{open_issues: .open_issues_count}'
-
-# Get open issues count
-gh issue list --repo owner/repo --state open --limit 1 --json number | jq 'length'
-# Or use: gh api repos/owner/repo/issues?state=open&per_page=1 -i | grep -i "link:" to check for pagination
-
-# Get closed issues count
-gh issue list --repo owner/repo --state closed --limit 1 --json number | jq 'length'
-
-# Get open PRs count
-gh pr list --repo owner/repo --state open --limit 1 --json number | jq 'length'
-
-# Get merged PRs count
-gh pr list --repo owner/repo --state merged --limit 1 --json number | jq 'length'
-
-# Better: Get actual totals using search API
+# Get actual totals using search API
 gh api "search/issues?q=repo:owner/repo+type:issue+state:open" -q '.total_count'
 gh api "search/issues?q=repo:owner/repo+type:issue+state:closed" -q '.total_count'
 gh api "search/issues?q=repo:owner/repo+type:pr+state:open" -q '.total_count'
 gh api "search/issues?q=repo:owner/repo+type:pr+is:merged" -q '.total_count'
+gh api repos/owner/repo -q '.forks_count'
 ```
 
+**GitLab:**
+```bash
+# Get issue counts via x-total header (per_page=1 for speed)
+glab api "projects/${PROJECT_PATH_ENCODED}/issues" -F state=opened -F per_page=1 -i 2>&1 | grep -i 'x-total:' | awk '{print $2}'
+glab api "projects/${PROJECT_PATH_ENCODED}/issues" -F state=closed -F per_page=1 -i 2>&1 | grep -i 'x-total:' | awk '{print $2}'
+
+# Get MR counts (GitLab = merge requests, not PRs)
+glab api "projects/${PROJECT_PATH_ENCODED}/merge_requests" -F state=opened -F per_page=1 -i 2>&1 | grep -i 'x-total:' | awk '{print $2}'
+glab api "projects/${PROJECT_PATH_ENCODED}/merge_requests" -F state=merged -F per_page=1 -i 2>&1 | grep -i 'x-total:' | awk '{print $2}'
+
 # Get fork count
-gh api repos/owner/repo -q '.forks_count'
+glab repo view group/project -F json | jq '.forks_count'
 ```
 
 **Display to user:**
 ```
-Repository: owner/repo
+Repository: owner/repo (GitHub|GitLab)
 - Open issues: X
 - Closed issues: Y
-- Open PRs: A
-- Merged PRs: B
+- Open PRs/MRs: A
+- Merged PRs/MRs: B
 - Forks: F
 ```
 
@@ -90,8 +144,8 @@ Use AskUserQuestion to gather preferences:
 
 ```
 Question 1: "How should I analyze this repository?"
-- "Full clone (Recommended)" - Clone the repo to read file structure, CLAUDE.md, .github/, README, etc.
-- "API only" - Use only GitHub API for metadata, issues, PRs, commits. Faster but less thorough.
+- "Full clone (Recommended)" - Clone the repo to read file structure, CLAUDE.md, .github/.gitlab/, README, etc.
+- "API only" - Use only GitHub/GitLab API for metadata, issues, PRs/MRs, commits. Faster but less thorough.
 
 Question 2: "What commit history timeframe?"
 - "3 months (Recommended)" - Recent activity, captures current patterns
@@ -104,11 +158,11 @@ Question 3: "How many issues to fetch?" (Show actual counts!)
 - "All open (X total)" - All currently open issues
 - "All (X open + Y closed)" - Complete issue history
 
-Question 4: "How many PRs to fetch?" (Show actual counts!)
-- "Last 100" - Quick sampling of recent PRs
+Question 4: "How many PRs/MRs to fetch?" (Show actual counts!)
+- "Last 100" - Quick sampling of recent PRs/MRs
 - "Last 500" - More comprehensive
-- "All open (A total)" - All currently open PRs
-- "All (A open + B merged)" - Complete PR history
+- "All open (A total)" - All currently open PRs/MRs
+- "All (A open + B merged)" - Complete PR/MR history
 
 Question 5: "A Fork on the Road?" (Only show if forks > 0! Show count.)
 - "Yes — analyze all F forks for unique changes" - Compare each fork against upstream to find divergent work
@@ -118,19 +172,41 @@ Question 5: "A Fork on the Road?" (Only show if forks > 0! Show count.)
 
 ### Step 4: Collect Data
 
-Run these commands to gather repository data:
+Run these commands to gather repository data. Use the appropriate platform commands:
 
 ```bash
 # Create temp directory
 mkdir -p /tmp/repo-analysis
+```
 
-# 1. Get repo metadata
+#### 4.1 Get repo metadata
+
+**GitHub:**
+```bash
 gh repo view owner/repo --json name,description,homepageUrl,languages,topics,defaultBranchRef
+```
 
-# 2. Check if wiki exists
+**GitLab:**
+```bash
+glab repo view group/project -F json | jq '{name: .name, description: .description, web_url: .web_url, topics: .topics, default_branch: .default_branch}'
+```
+
+#### 4.2 Check if wiki exists
+
+**GitHub:**
+```bash
 gh api repos/owner/repo -q '.has_wiki'
+```
 
-# 3. Fetch issues (adjust --limit based on user choice, use --state as needed)
+**GitLab:**
+```bash
+glab api "projects/${PROJECT_PATH_ENCODED}" | jq '.wiki_enabled'
+```
+
+#### 4.3 Fetch issues
+
+**GitHub:**
+```bash
 # For "Last 100":
 gh issue list --repo owner/repo --state all --limit 100 \
   --json number,title,body,state,labels,author,createdAt,closedAt
@@ -142,8 +218,27 @@ gh issue list --repo owner/repo --state open --limit 9999 \
 # For "All":
 gh issue list --repo owner/repo --state all --limit 9999 \
   --json number,title,body,state,labels,author,createdAt,closedAt
+```
 
-# 4. Fetch pull requests (adjust --limit based on user choice)
+**GitLab:**
+```bash
+# For "Last 100":
+glab issue list -R group/project --all --per-page 100 -F json
+
+# For "All open":
+glab issue list -R group/project --per-page 100 -F json
+# Note: glab defaults to open state; use --all for all states
+# For large counts, paginate:
+glab api "projects/${PROJECT_PATH_ENCODED}/issues" -F state=opened -F per_page=100 --paginate
+
+# For "All":
+glab api "projects/${PROJECT_PATH_ENCODED}/issues" -F state=all -F per_page=100 --paginate
+```
+
+#### 4.4 Fetch pull requests / merge requests
+
+**GitHub:**
+```bash
 # For "Last 100":
 gh pr list --repo owner/repo --state all --limit 100 \
   --json number,title,body,state,author,mergedAt,additions,deletions,changedFiles
@@ -155,35 +250,93 @@ gh pr list --repo owner/repo --state open --limit 9999 \
 # For "All":
 gh pr list --repo owner/repo --state all --limit 9999 \
   --json number,title,body,state,author,mergedAt,additions,deletions,changedFiles
+```
 
-# 5. Fetch recent commits (adjust --since for timeframe)
+**GitLab:**
+```bash
+# For "Last 100":
+glab mr list -R group/project --all --per-page 100 -F json
+
+# For "All open":
+glab mr list -R group/project --per-page 100 -F json
+
+# For "All":
+glab api "projects/${PROJECT_PATH_ENCODED}/merge_requests" -F state=all -F per_page=100 --paginate
+```
+
+#### 4.5 Fetch recent commits
+
+**GitHub:**
+```bash
 gh api "repos/owner/repo/commits?since=$(date -v-3m +%Y-%m-%dT%H:%M:%SZ)&per_page=100" \
   --jq '.[] | {sha: .sha[0:7], author: .commit.author.name, date: .commit.author.date, message: .commit.message}'
+```
 
-# 6. Fetch contributors
+**GitLab:**
+```bash
+glab api "projects/${PROJECT_PATH_ENCODED}/repository/commits" \
+  -F since="$(date -v-3m +%Y-%m-%dT%H:%M:%SZ)" -F per_page=100 \
+  | jq '.[] | {sha: .short_id, author: .author_name, date: .authored_date, message: .message}'
+```
+
+#### 4.6 Fetch contributors
+
+**GitHub:**
+```bash
 gh api repos/owner/repo/contributors --jq '.[] | {login, contributions}' | head -20
+```
 
-# If "Full clone" selected:
-# 7. Clone repository (shallow)
+**GitLab:**
+```bash
+glab api "projects/${PROJECT_PATH_ENCODED}/repository/contributors" \
+  | jq '.[] | {name, email, commits}' | head -20
+```
+
+**Note:** GitLab's contributor API returns `name` and `email` (from git commits), not usernames. To get GitLab usernames, you may need to cross-reference with project members:
+```bash
+glab api "projects/${PROJECT_PATH_ENCODED}/members/all" | jq '.[] | {username, name}'
+```
+
+#### 4.7 Clone repository (if "Full clone" selected)
+
+**GitHub:**
+```bash
 git clone --depth=1 https://github.com/owner/repo.git /tmp/repo-analysis/repo
+```
 
-# 8. Clone wiki (if exists)
+**GitLab:**
+```bash
+git clone --depth=1 https://gitlab.com/group/project.git /tmp/repo-analysis/repo
+# For self-hosted: use the full URL from the repo metadata
+```
+
+#### 4.8 Clone wiki (if exists)
+
+**GitHub:**
+```bash
 git clone --depth=1 https://github.com/owner/repo.wiki.git /tmp/repo-analysis/wiki 2>/dev/null || echo "No wiki"
+```
 
-# 9. If "A Fork on the Road" selected:
+**GitLab:**
+```bash
+# GitLab wikis are stored as git repos at <project-url>.wiki.git
+git clone --depth=1 https://gitlab.com/group/project.wiki.git /tmp/repo-analysis/wiki 2>/dev/null || echo "No wiki"
+```
+
+#### 4.9 Fork analysis (if "A Fork on the Road" selected)
+
+**GitHub:**
+```bash
 # Fetch all forks with metadata
 gh api repos/owner/repo/forks --paginate \
   --jq '.[] | {full_name, owner: .owner.login, default_branch, pushed_at, updated_at, stargazers_count, forks_count}' \
   > /tmp/repo-analysis/forks.json
 
-# For each fork, compare against upstream's default branch.
-# This reveals commits in the fork that are NOT in upstream — the unique work.
-# Replace <default_branch> with the repo's actual default branch (e.g. main, master).
+# For each fork, compare against upstream's default branch
 for fork in $(gh api repos/owner/repo/forks --paginate --jq '.[].full_name'); do
   fork_owner=$(echo "$fork" | cut -d'/' -f1)
   fork_branch=$(gh api "repos/$fork" --jq '.default_branch' 2>/dev/null)
 
-  # Compare: what does the fork have that upstream doesn't?
   gh api "repos/owner/repo/compare/<default_branch>...${fork_owner}:${fork_branch}" \
     --jq '{
       fork: "'"$fork"'",
@@ -197,7 +350,35 @@ for fork in $(gh api repos/owner/repo/forks --paginate --jq '.[].full_name'); do
 done > /tmp/repo-analysis/fork-comparisons.json
 ```
 
-**Note on fork comparison:** The compare API has a limit of ~250 commits. For forks that have diverged significantly, the API will return `"status": "diverged"` with truncated results. In these cases, note the divergence but don't try to enumerate every commit — summarize at a high level instead.
+**GitLab:**
+```bash
+# Fetch all forks with metadata
+glab api "projects/${PROJECT_PATH_ENCODED}/forks" --paginate \
+  | jq '.[] | {full_path: .path_with_namespace, owner: .namespace.path, default_branch, last_activity_at, star_count, forks_count}' \
+  > /tmp/repo-analysis/forks.json
+
+# For each fork, compare against upstream
+# GitLab uses the repository compare API:
+# GET /projects/:id/repository/compare?from=<upstream_branch>&to=<fork_branch>
+# However, cross-project comparison requires the fork to be accessible.
+# Alternative: clone each fork shallow and use git log --not
+for fork_path in $(glab api "projects/${PROJECT_PATH_ENCODED}/forks" --paginate | jq -r '.[].path_with_namespace'); do
+  fork_encoded=$(echo "$fork_path" | sed 's/\//%2F/g')
+  fork_branch=$(glab api "projects/${fork_encoded}" | jq -r '.default_branch' 2>/dev/null)
+  upstream_branch=$(glab api "projects/${PROJECT_PATH_ENCODED}" | jq -r '.default_branch' 2>/dev/null)
+
+  # GitLab compare API (within same server)
+  glab api "projects/${fork_encoded}/repository/compare" \
+    -F from="${upstream_branch}" -F to="${fork_branch}" \
+    | jq '{
+      fork: "'"$fork_path"'",
+      commits: [.commits[]? | {sha: .short_id, message: .message, author: .author_name, date: .authored_date}],
+      diffs: [.diffs[]? | .new_path]
+    }' 2>/dev/null
+done > /tmp/repo-analysis/fork-comparisons.json
+```
+
+**Note on fork comparison:** The compare API has a limit of ~250 commits on GitHub and similar limits on GitLab. For forks that have diverged significantly, note the divergence but don't try to enumerate every commit — summarize at a high level instead.
 
 ### Step 5: Analyze Data
 
@@ -208,17 +389,21 @@ Analyze the collected data for:
 - What areas do they focus on?
 - What's their commit message style?
 
-**CRITICAL: Use real names, never invent them.** Look up each contributor's real name via `gh api users/<login> -q '.name'`. GitHub handles do NOT reliably map to real names (e.g., `kaneel` = Guillaume Richard, not "Chris"; `krplata` = Krystian Plata, not "Kuba"). If the API returns null for `.name`, use the GitHub handle only — do NOT guess a name.
+**CRITICAL: Use real names, never invent them.**
+
+GitHub: Look up each contributor's real name via `gh api users/<login> -q '.name'`. GitHub handles do NOT reliably map to real names (e.g., `kaneel` = Guillaume Richard, not "Chris"). If the API returns null for `.name`, use the GitHub handle only — do NOT guess a name.
+
+GitLab: Look up via `glab api users -F username=<login> | jq '.[0].name'`. If the API returns an empty array or null name, use the handle only.
 
 **5.2 Commit Conventions**
 - Do they use conventional commits (feat:, fix:, chore:)?
 - What prefixes/patterns are common?
 - How detailed are commit messages?
 
-**5.3 PR Conventions**
-- What's the PR title format?
-- Do PRs have description templates?
-- What's the typical PR scope (files changed)?
+**5.3 PR/MR Conventions**
+- What's the PR/MR title format?
+- Do PRs/MRs have description templates?
+- What's the typical PR/MR scope (files changed)?
 
 **5.4 Issue Patterns**
 - What labels are used?
@@ -229,7 +414,8 @@ Analyze the collected data for:
 - README.md - project overview, setup instructions
 - CONTRIBUTING.md - contribution guidelines
 - CLAUDE.md or .claude/ - AI-specific instructions
-- .github/ - templates, workflows, CI/CD
+- `.github/` (GitHub) or `.gitlab/` (GitLab) - templates, workflows, CI/CD
+- `.gitlab-ci.yml` (GitLab) - CI/CD pipeline definition
 - Wiki pages - detailed documentation
 
 **5.6 Code Structure (if cloned)**
@@ -241,10 +427,10 @@ Analyze the collected data for:
 **5.7 A Fork on the Road (if fork analysis selected)**
 
 Analyze the fork comparison data to answer:
-- **Which forks have unique work?** (ahead_by > 0) — these are the interesting ones
+- **Which forks have unique work?** (ahead_by > 0 or unique commits) — these are the interesting ones
 - **What did they change?** Summarize the files changed and commit messages per fork
 - **Are there patterns?** Multiple forks fixing the same thing suggests an unaddressed upstream issue
-- **Stale vs. active?** Use `pushed_at` to distinguish active forks from abandoned ones
+- **Stale vs. active?** Use `pushed_at` / `last_activity_at` to distinguish active forks from abandoned ones
 - **Could any of this be upstreamed?** Flag changes that look like bug fixes, feature additions, or compatibility patches that the upstream repo might benefit from
 
 Categorize each fork with unique work as one of:
@@ -267,7 +453,8 @@ description: Development skill for <repo-name> - <brief description from repo>
 domain: repository-specific
 version: 1.0.0
 generated: <current timestamp>
-source_repo: https://github.com/owner/repo
+source_repo: <full URL — https://github.com/... or https://gitlab.com/...>
+source_platform: <github|gitlab>
 tags: [<primary language>, <framework if any>, <topics from repo>]
 triggers:
   keywords:
@@ -277,7 +464,7 @@ triggers:
 
 # <Repo Name> Development Skill
 
-> Auto-generated by github-cloner on <date>. Re-run `/github-cloner owner/repo` to update.
+> Auto-generated by github-cloner on <date> from <GitHub|GitLab>. Re-run `/github-cloner <url>` to update.
 
 ## Repository Overview
 
@@ -305,9 +492,9 @@ repo/
   - `feat(api): add user authentication endpoint`
   - `fix(ui): resolve button alignment issue`
 
-### Pull Requests
+### Pull Requests / Merge Requests
 
-<PR conventions:>
+<PR/MR conventions:>
 - Title format: <pattern>
 - Description template: <if present>
 - Typical scope: <N files, M lines>
@@ -345,7 +532,7 @@ repo/
 
 <Build and deployment:>
 - Build command: <if known>
-- CI: <GitHub Actions, CircleCI, etc.>
+- CI: <GitHub Actions | GitLab CI (.gitlab-ci.yml) | other>
 - Deployment: <if documented>
 
 ## Documentation Resources
@@ -359,7 +546,7 @@ repo/
 
 <From CLAUDE.md if present, or generated guidelines:>
 - When working on this repo, follow these conventions...
-- Before submitting PRs, ensure...
+- Before submitting PRs/MRs, ensure...
 - Key files to understand: ...
 
 ## A Fork on the Road
@@ -390,77 +577,81 @@ repo/
 - @fork_owner5 (last pushed: 2022-12-10) — identical to upstream
 
 ## Key Contributors
-<!-- PR-FED: Updated by PR analysis. When a PR reveals new focus areas or notable work, update this table. -->
+<!-- PR-FED: Updated by PR/MR analysis. When a PR/MR reveals new focus areas or notable work, update this table. -->
 
-**CRITICAL: All names in this table MUST be real names looked up via `gh api users/<login> -q '.name'`. NEVER guess or invent names from GitHub handles.**
+**CRITICAL: All names in this table MUST be real names looked up via the platform API. NEVER guess or invent names from handles.**
 
-| Contributor | GitHub | Focus Areas | Notable PRs |
-|-------------|--------|-------------|-------------|
-<Populated from contributor analysis. Notable PRs column starts empty, filled by PR analysis.>
+GitHub: `gh api users/<login> -q '.name'`
+GitLab: `glab api users -F username=<login> | jq '.[0].name'`
+
+| Contributor | Handle | Focus Areas | Notable PRs/MRs |
+|-------------|--------|-------------|-----------------|
+<Populated from contributor analysis. Notable PRs/MRs column starts empty, filled by PR/MR analysis.>
 
 ## Common Pitfalls
-<!-- PR-FED: Grown from PRs that fix recurring problems. Each row is a lesson learned. -->
+<!-- PR-FED: Grown from PRs/MRs that fix recurring problems. Each row is a lesson learned. -->
 
 | Pitfall | Fix | Seen in |
 |---------|-----|---------|
-<Starts empty. Populated as bug-fix PRs are analyzed.>
+<Starts empty. Populated as bug-fix PRs/MRs are analyzed.>
 
-## PR Analysis & Skill Growth
+## PR/MR Analysis & Skill Growth
 
-This skill is a living document. It was created by github-cloner but is **kept alive by PR analysis**.
+This skill is a living document. It was created by github-cloner but is **kept alive by PR/MR analysis**.
 
 **How it grows:**
-- Every PR analyzed updates the skill — contributors, active areas, pitfalls, coding patterns
-- Techniques extracted from PRs accumulate in `pr-exemplars.md`
-- Sections marked `<!-- PR-FED -->` are maintained by the PR analysis pipeline
+- Every PR/MR analyzed updates the skill — contributors, active areas, pitfalls, coding patterns
+- Techniques extracted from PRs/MRs accumulate in `pr-exemplars.md`
+- Sections marked `<!-- PR-FED -->` are maintained by the PR/MR analysis pipeline
 
 **Modules that power this:**
 
 | Module | Path | Purpose |
 |--------|------|---------|
-| PR Writeup Template | `~/.claude/skills/pr-writeup-template.md` | Problem → Solution format for PR descriptions |
-| PR Analysis | `~/.claude/skills/pr-analysis.md` | Read, explain, score, and archive PRs; feed back into this skill |
-| PR Exemplars | `~/.claude/skills/<repo-name>/pr-exemplars.md` | Every PR archived, techniques indexed |
+| PR Writeup Template | `~/.claude/skills/pr-writeup-template.md` | Problem -> Solution format for PR/MR descriptions |
+| PR Analysis | `~/.claude/skills/pr-analysis.md` | Read, explain, score, and archive PRs/MRs; feed back into this skill |
+| PR Exemplars | `~/.claude/skills/<repo-name>/pr-exemplars.md` | Every PR/MR archived, techniques indexed |
 
-**To analyze a PR:** Say `read <URL>` or `read PR #<number>`
-**To bulk-ingest history:** Re-run `/github-cloner owner/repo`
+**To analyze a PR/MR:** Say `read <URL>` or `read PR #<number>` / `read MR !<number>`
+**To bulk-ingest history:** Re-run `/github-cloner <url>`
 
 ## Quick Reference
 
 | Item | Value |
 |------|-------|
+| Source Platform | <GitHub\|GitLab> |
 | Primary Language | <language> |
 | Default Branch | <branch> |
 | License | <license> |
 | Last Analyzed | <date> |
 ```
 
-### Step 6.5: Initialize PR Analysis Pipeline
+### Step 6.5: Initialize PR/MR Analysis Pipeline
 
 After generating the skill, also create the PR exemplars file:
 
 Create `~/.claude/skills/<repo-name>/pr-exemplars.md`:
 
 ```markdown
-# <Repo Name> — PR Archive & Exemplars
+# <Repo Name> — PR/MR Archive & Exemplars
 
-> Every merged PR is a record of what was contributed. This file catalogues them all.
-> Stand-out PRs (13+/15) are spotlighted. Every PR teaches something.
+> Every merged PR/MR is a record of what was contributed. This file catalogues them all.
+> Stand-out PRs/MRs (13+/15) are spotlighted. Every PR/MR teaches something.
 > Managed by the PR Analysis skill (`~/.claude/skills/pr-analysis.md`).
 
 ## Techniques Index
 
 | Technique | First seen in | Category |
 |-----------|--------------|----------|
-<Populated as PRs are analyzed.>
+<Populated as PRs/MRs are analyzed.>
 
 ---
 
-<PR entries appear here as they are analyzed.>
+<PR/MR entries appear here as they are analyzed.>
 ```
 
-Then, for each of the top 10-20 most significant merged PRs (largest diff, most comments, or most recent), run the PR analysis pipeline from `~/.claude/skills/pr-analysis.md`:
-1. Fetch the PR metadata and diff
+Then, for each of the top 10-20 most significant merged PRs/MRs (largest diff, most comments, or most recent), run the PR analysis pipeline from `~/.claude/skills/pr-analysis.md`:
+1. Fetch the PR/MR metadata and diff
 2. Produce the breakdown (what it does, changes at a glance, technique, risk)
 3. Score it (Craft / Clarity / Courage)
 4. Archive it in `pr-exemplars.md`
@@ -474,9 +665,10 @@ Also create `~/.claude/skills/<repo-name>/analysis.json` for other LLMs/agents:
 
 ```json
 {
-  "version": "1.0",
+  "version": "2.0",
   "generated": "<ISO-8601 timestamp>",
-  "source_repo": "https://github.com/owner/repo",
+  "source_repo": "<full URL>",
+  "source_platform": "github|gitlab",
 
   "repository": {
     "name": "<repo-name>",
@@ -490,10 +682,10 @@ Also create `~/.claude/skills/<repo-name>/analysis.json` for other LLMs/agents:
   "contributors": [
     {
       "login": "<username>",
-      "contributions": <count>,
+      "contributions": "<count>",
       "focus_areas": ["<path1>", "<path2>"],
       "commit_style": "conventional|freeform|mixed",
-      "recent_activity": true|false
+      "recent_activity": true
     }
   ],
 
@@ -502,27 +694,27 @@ Also create `~/.claude/skills/<repo-name>/analysis.json` for other LLMs/agents:
     "commit_prefixes": ["feat", "fix", "chore", "docs"],
     "commit_examples": ["<example1>", "<example2>"],
     "pr_title_format": "<pattern>",
-    "pr_has_template": true|false,
+    "pr_has_template": true,
     "issue_labels": ["<label1>", "<label2>"]
   },
 
   "recent_prs": [
     {
-      "number": <n>,
+      "number": 0,
       "title": "<title>",
       "body": "<description>",
       "state": "open|closed|merged",
       "author": "<username>",
       "merged_at": "<timestamp>",
-      "files_changed": <n>,
-      "additions": <n>,
-      "deletions": <n>
+      "files_changed": 0,
+      "additions": 0,
+      "deletions": 0
     }
   ],
 
   "recent_issues": [
     {
-      "number": <n>,
+      "number": 0,
       "title": "<title>",
       "body": "<description>",
       "state": "open|closed",
@@ -541,32 +733,32 @@ Also create `~/.claude/skills/<repo-name>/analysis.json` for other LLMs/agents:
   ],
 
   "documentation": {
-    "has_readme": true|false,
-    "has_contributing": true|false,
-    "has_claude_md": true|false,
-    "has_wiki": true|false,
+    "has_readme": true,
+    "has_contributing": true,
+    "has_claude_md": false,
+    "has_wiki": true,
     "wiki_pages": ["<page1>", "<page2>"],
     "readme_summary": "<brief summary>"
   },
 
   "recent_activity": {
-    "analysis_period_days": <n>,
-    "total_commits": <n>,
-    "total_prs_merged": <n>,
-    "active_contributors": <n>
+    "analysis_period_days": 0,
+    "total_commits": 0,
+    "total_prs_merged": 0,
+    "active_contributors": 0
   },
 
   "forks": {
-    "total_count": <n>,
-    "analyzed": true|false,
-    "forks_with_unique_work": <n>,
+    "total_count": 0,
+    "analyzed": false,
+    "forks_with_unique_work": 0,
     "fork_details": [
       {
         "full_name": "<owner/repo>",
         "owner": "<username>",
         "type": "feature|fix|customization|abandoned|mirror",
-        "ahead_by": <n>,
-        "behind_by": <n>,
+        "ahead_by": 0,
+        "behind_by": 0,
         "last_pushed": "<ISO-8601 timestamp>",
         "unique_commits": [
           {
@@ -578,7 +770,7 @@ Also create `~/.claude/skills/<repo-name>/analysis.json` for other LLMs/agents:
         ],
         "files_changed": ["<file1>", "<file2>"],
         "summary": "<brief description of what this fork adds/changes>",
-        "upstreaming_candidate": true|false,
+        "upstreaming_candidate": true,
         "upstreaming_reason": "<why this could benefit upstream>"
       }
     ]
@@ -599,23 +791,23 @@ rm -rf /tmp/repo-analysis
 
 Tell the user:
 - Skill created at `~/.claude/skills/<repo-name>/SKILL.md`
-- PR archive initialized at `~/.claude/skills/<repo-name>/pr-exemplars.md`
+- PR/MR archive initialized at `~/.claude/skills/<repo-name>/pr-exemplars.md`
 - Machine-readable data at `~/.claude/skills/<repo-name>/analysis.json`
-- Top PRs have been analyzed and seeded into the exemplar library
+- Top PRs/MRs have been analyzed and seeded into the exemplar library
 - If fork analysis was performed: **"A Fork on the Road" found N forks with unique work** — summarize the most interesting findings (potential bug fixes, features, etc.)
-- **The skill is now alive** — say `read <PR-URL>` to analyze any PR and the skill grows
-- How to update the foundation: re-run `/github-cloner owner/repo`
+- **The skill is now alive** — say `read <PR/MR-URL>` to analyze any PR/MR and the skill grows
+- How to update the foundation: re-run `/github-cloner <url>`
 
 ---
 
-## How github-cloner and PR Analysis Work Together
+## How github-cloner and PR/MR Analysis Work Together
 
 ```
-github-cloner                          PR analysis
-─────────────                          ───────────
-Analyzes repo ──→ Creates SKILL.md     "read <URL>" ──→ Fetches PR
+github-cloner                          PR/MR analysis
+─────────────                          ──────────────
+Analyzes repo ──→ Creates SKILL.md     "read <URL>" ──→ Fetches PR/MR
                   Creates pr-exemplars.md               Explains diff
-                  Seeds top PRs ────────────────────→   Scores quality
+                  Seeds top PRs/MRs ───────────────→   Scores quality
                                                         Archives to pr-exemplars.md
                                                         Updates SKILL.md (PR-FED sections)
                                                         ↓
@@ -626,15 +818,18 @@ Analyzes repo ──→ Creates SKILL.md     "read <URL>" ──→ Fetches PR
 ```
 
 **github-cloner** is the foundation pour — the initial snapshot.
-**PR analysis** is the ongoing feed — every PR deepens the skill's understanding.
+**PR/MR analysis** is the ongoing feed — every PR/MR deepens the skill's understanding.
 
-The skill knows the people. It knows their code. It knows the patterns they use and the mistakes they've fixed. And it gets better every time a PR is analyzed.
+The skill knows the people. It knows their code. It knows the patterns they use and the mistakes they've fixed. And it gets better every time a PR/MR is analyzed.
 
 ## Notes
 
-- **Rate limits**: GitHub API has rate limits. For large repos, the API-only mode is gentler.
-- **Private repos**: Requires `gh auth` with appropriate permissions.
+- **Rate limits**: Both GitHub and GitLab APIs have rate limits. For large repos, the API-only mode is gentler.
+- **Private repos**: GitHub requires `gh auth` with appropriate permissions. GitLab requires `glab auth` with a personal access token.
+- **Self-hosted GitLab**: `glab` supports self-hosted instances. Configure with `glab auth login --hostname your-gitlab.example.com`.
 - **Updates**: Re-running the skill will overwrite the generated skill with fresh data, but preserves `pr-exemplars.md`.
-- **Wiki**: Not all repos have wikis. The skill handles this gracefully.
+- **Wiki**: Not all repos have wikis. The skill handles this gracefully on both platforms.
+- **GitLab CI/CD**: GitLab repos often have `.gitlab-ci.yml` at root — this is equivalent to `.github/workflows/` and should be analyzed for build/test/deploy patterns.
+- **GitLab subgroups**: GitLab supports nested groups (e.g., `org/team/subteam/project`). All slashes must be URL-encoded in API calls.
 - **PR analysis module**: `~/.claude/skills/pr-analysis.md` — the full pipeline docs.
-- **PR writeup template**: `~/.claude/skills/pr-writeup-template.md` — how to write PR descriptions.
+- **PR writeup template**: `~/.claude/skills/pr-writeup-template.md` — how to write PR/MR descriptions.
