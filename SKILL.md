@@ -181,8 +181,11 @@ Question 5: "A Fork on the Road?" (Only show if forks > 0! Show count.)
 Run these commands to gather repository data. Use the appropriate platform commands:
 
 ```bash
-# Create temp directory
+# Create temp directory for transient analysis data (forks, wiki)
 mkdir -p /tmp/repo-analysis
+
+# The repo itself is cloned to ~/work/<repo-name>/ as a FULL working copy
+# (not shallow, not to /tmp) so the user can work from it afterward
 ```
 
 #### 4.1 Get repo metadata
@@ -305,16 +308,36 @@ glab api "projects/${PROJECT_PATH_ENCODED}/members/all" | jq '.[] | {username, n
 
 #### 4.7 Clone repository (if "Full clone" selected)
 
+Clone to `~/work/<repo-name>/` as a **full working copy** (not shallow). This gives the user a repo they can immediately work from — create branches, push PRs/MRs, etc.
+
+If `~/work/<repo-name>/` already exists, skip cloning and use the existing checkout (pull latest if clean).
+
 **GitHub:**
 ```bash
-git clone --depth=1 https://github.com/owner/repo.git /tmp/repo-analysis/repo
+# Full clone to working directory
+if [ -d ~/work/<repo-name> ]; then
+  echo "~/work/<repo-name>/ already exists — using existing checkout"
+  cd ~/work/<repo-name> && git pull --ff-only 2>/dev/null || true
+else
+  git clone https://github.com/owner/repo.git ~/work/<repo-name>
+fi
 ```
 
 **GitLab:**
 ```bash
-git clone --depth=1 https://gitlab.com/group/project.git /tmp/repo-analysis/repo
-# For self-hosted: use the full URL from the repo metadata
+# Full clone to working directory
+# For split-hostname instances, clone via SSH host
+if [ -d ~/work/<repo-name> ]; then
+  echo "~/work/<repo-name>/ already exists — using existing checkout"
+  cd ~/work/<repo-name> && git pull --ff-only 2>/dev/null || true
+else
+  git clone https://gitlab.com/group/project.git ~/work/<repo-name>
+  # For self-hosted: use the full URL from the repo metadata
+  # For split-hostname: git clone git@${GIT_HOST}:group/project.git ~/work/<repo-name>
+fi
 ```
+
+**After cloning, analyze from `~/work/<repo-name>/`** — read directory structure, README, CONTRIBUTING, CLAUDE.md, .github/.gitlab/, etc. from the working copy.
 
 #### 4.8 Clone wiki (if exists)
 
@@ -789,19 +812,22 @@ This file follows the schema at `~/.claude/skills/github-cloner/schemas/repo-ana
 ### Step 7: Cleanup
 
 ```bash
-# Remove temp files
+# Remove temp files (forks, wiki analysis data) — NOT the working repo
 rm -rf /tmp/repo-analysis
+# The repo at ~/work/<repo-name>/ is kept as a working copy
 ```
 
 ### Step 9: Report Success
 
 Tell the user:
+- **Working repo** cloned to `~/work/<repo-name>/` — ready for branches, commits, and PRs/MRs
 - Skill created at `~/.claude/skills/<repo-name>/SKILL.md`
 - PR/MR archive initialized at `~/.claude/skills/<repo-name>/pr-exemplars.md`
 - Machine-readable data at `~/.claude/skills/<repo-name>/analysis.json`
 - Top PRs/MRs have been analyzed and seeded into the exemplar library
 - If fork analysis was performed: **"A Fork on the Road" found N forks with unique work** — summarize the most interesting findings (potential bug fixes, features, etc.)
 - **The skill is now alive** — say `read <PR/MR-URL>` to analyze any PR/MR and the skill grows
+- **To start working:** `cd ~/work/<repo-name>` — the repo is a full clone with complete git history
 - How to update the foundation: re-run `/github-cloner <url>`
 
 ---
