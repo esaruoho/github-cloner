@@ -93,12 +93,18 @@ GitLab:
 1. URL contains `gitlab.com` or `gitlab.` → GitLab
 2. URL contains `github.com` → GitHub
 3. Prefixed with `gitlab:` → GitLab
-4. Bare `owner/repo` with no prefix → GitHub (default)
-5. If ambiguous, ask the user
+4. URL contains a known self-hosted GitLab hostname (see "Known Self-Hosted GitLab Instances" section) → GitLab
+5. Bare `owner/repo` with no prefix → GitHub (default)
+6. If ambiguous, ask the user
 
 **Set a `PLATFORM` variable** (github or gitlab) that all subsequent steps use.
 
 For GitLab, also compute the **URL-encoded project path**: replace `/` with `%2F` in the project path (e.g., `group%2Fsubgroup%2Fproject`). Store this as `PROJECT_PATH_ENCODED`.
+
+**Split-hostname detection:** If the GitLab instance has separate SSH and API hostnames (see "Known Self-Hosted GitLab Instances"), store both:
+- `GIT_HOST` — for `git clone` operations (SSH)
+- `API_HOST` — for `glab api` and `glab` CLI operations
+- Prefix all `glab` commands with `GITLAB_HOST=${API_HOST}` when these differ
 
 ### Step 2: Get Repository Stats First
 
@@ -827,9 +833,21 @@ The skill knows the people. It knows their code. It knows the patterns they use 
 - **Rate limits**: Both GitHub and GitLab APIs have rate limits. For large repos, the API-only mode is gentler.
 - **Private repos**: GitHub requires `gh auth` with appropriate permissions. GitLab requires `glab auth` with a personal access token.
 - **Self-hosted GitLab**: `glab` supports self-hosted instances. Configure with `glab auth login --hostname your-gitlab.example.com`.
+- **Split-hostname GitLab instances**: Some self-hosted GitLab setups use different hostnames for SSH (git) and HTTPS (API) — for example, due to Cloudflare constraints. In these cases, `glab` may fail because it assumes both git and API are on the same hostname. **Workaround:** set `GITLAB_HOST=<api-hostname>` when running `glab` commands on a repo cloned via SSH from a different hostname. Example: if SSH is at `git.example.com` but API is at `work.example.com`, use `GITLAB_HOST=work.example.com glab issue list`. Known instance with this issue: Episkopos Community (`git.episkopos.community` for SSH, `work.episkopos.community` for API).
 - **Updates**: Re-running the skill will overwrite the generated skill with fresh data, but preserves `pr-exemplars.md`.
 - **Wiki**: Not all repos have wikis. The skill handles this gracefully on both platforms.
 - **GitLab CI/CD**: GitLab repos often have `.gitlab-ci.yml` at root — this is equivalent to `.github/workflows/` and should be analyzed for build/test/deploy patterns.
 - **GitLab subgroups**: GitLab supports nested groups (e.g., `org/team/subteam/project`). All slashes must be URL-encoded in API calls.
 - **PR analysis module**: `~/.claude/skills/pr-analysis.md` — the full pipeline docs.
 - **PR writeup template**: `~/.claude/skills/pr-writeup-template.md` — how to write PR/MR descriptions.
+
+## Known Self-Hosted GitLab Instances
+
+| Instance | SSH Host | API Host | Notes |
+|----------|----------|----------|-------|
+| Episkopos Community | `git.episkopos.community` | `work.episkopos.community` | Split hostname due to Cloudflare. Use `GITLAB_HOST=work.episkopos.community` for all `glab` commands. Status page: `status.episkopos.community`. Also runs: Stoat Chat, Umami analytics, Rallly scheduling. |
+
+When cloning from a known split-hostname instance, the skill should automatically detect this and:
+1. Clone via SSH using the git hostname
+2. Set `GITLAB_HOST` to the API hostname for all `glab` API calls
+3. Warn the user about the split-hostname configuration in the generated skill
